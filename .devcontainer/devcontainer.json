@@ -17,6 +17,7 @@
   },
   "forwardPorts": [8888],
   "remoteEnv": {
+    "_DIAG_BASE_URL_comment": "Set this URL to your GSI diagnostic file server. Recommended: add it as a Codespace secret under GitHub Settings > Codespaces > Secrets so it persists across sessions.",
     "DIAG_BASE_URL": ""
   }
 }

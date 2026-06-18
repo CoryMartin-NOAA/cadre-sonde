@@ -1,8 +1,8 @@
 ## Requirements for cadre-sonde radiosonde profile notebook
 ## Install with: pip install -r requirements.txt
 
-# GSI diagnostic file reader
-git+https://github.com/NOAA-EMC/PyGSI.git
+# GSI diagnostic file reader (pinned to v1.0.0 for reproducibility)
+git+https://github.com/NOAA-EMC/PyGSI.git@v1.0.0
 
 # Core scientific stack
 numpy>=1.23
