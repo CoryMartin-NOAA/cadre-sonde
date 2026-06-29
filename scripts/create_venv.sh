@@ -3,8 +3,27 @@
 # Define the virtual environment directory
 VENV_DIR="venv"
 
-# Use the spack-stack modulefiles path as seen on Ursa
-module use /contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.2.1/install/modulefiles/Core
+# Detect machine to set the correct spack-stack path
+HOSTNAME=$(hostname)
+if [[ "${HOSTNAME}" == *"ursa"* || "${HOSTNAME}" == *"ufe"* ]]; then
+    MACHINE="ursa"
+    SPACK_CORE="/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.2.1/install/modulefiles/Core"
+elif [[ "${HOSTNAME}" == *"orion"* || "${HOSTNAME}" == *"Orion"* ]]; then
+    MACHINE="orion"
+    SPACK_CORE="/apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install/modulefiles/Core"
+elif [[ "${HOSTNAME}" == *"hercules"* || "${HOSTNAME}" == *"Hercules"* || "${HOSTNAME}" == *"hecs"* ]]; then
+    MACHINE="hercules"
+    SPACK_CORE="/apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install/modulefiles/Core"
+else
+    echo "Unknown machine: ${HOSTNAME}. This script currently supports Ursa, Orion, and Hercules."
+    exit 1
+fi
+
+echo "Detected machine: ${MACHINE}"
+echo "Using spack-stack core: ${SPACK_CORE}"
+
+# Use the spack-stack modulefiles path
+module use ${SPACK_CORE}
 
 # Load necessary modules for the base environment
 module load stack-oneapi/2024.2.1
