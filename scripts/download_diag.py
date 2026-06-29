@@ -35,6 +35,8 @@ import argparse
 import os
 import sys
 import tarfile
+import gzip
+import shutil
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import urljoin
@@ -188,7 +190,18 @@ def download_diag_files(
         with tarfile.open(dest, "r") as tar:
             tar.extractall(path=outdir)
             for member in tar.getmembers():
-                extracted_paths.append(outdir / member.name)
+                member_path = outdir / member.name
+                if member_path.suffix == ".gz":
+                    # Gunzip the file
+                    uncompressed_path = member_path.with_suffix("")
+                    print(f"[gunzip]   {member_path.name} -> {uncompressed_path.name}")
+                    with gzip.open(member_path, "rb") as f_in:
+                        with open(uncompressed_path, "wb") as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    member_path.unlink()  # Remove the .gz file after extraction
+                    extracted_paths.append(uncompressed_path)
+                else:
+                    extracted_paths.append(member_path)
         print(f"[ok]       Extracted {len(extracted_paths)} files")
     except (tarfile.TarError, OSError) as exc:
         print(f"[error]    Extracting {filename}: {exc}", file=sys.stderr)

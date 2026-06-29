@@ -4,3 +4,5 @@
 __pycache__/
 *.py[cod]
 venv/
+*.nc4
+gdas.t00z.cnvstat
