@@ -145,6 +145,13 @@ diag_conv_<variable>_<ftype>.<YYYYMMDDHH>.nc4
 
 ---
 
+## Orion Interactive
+https://orion-ood.hpc.msstate.edu/pun/sys/dashboard
+
+Orion venv installed:
+
+`source /work/noaa/da/cmartin/cadre/venv/bin/activate`
+
 ## DISCLAIMER
 
 This project is provided on an "as is" basis.
