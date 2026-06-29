@@ -1,35 +1,30 @@
 """
-download_diag.py — Download GSI netCDF diagnostic files.
+download_diag.py — Download and extract GSI tarred diagnostic files.
 
-Downloads one or more GSI conventional diagnostic files from a remote
-URL into a local output directory.  The remote base URL and output
+Downloads a GSI conventional diagnostic tar file from a remote
+URL into a local output directory, and extracts it. The remote base URL and output
 directory can be supplied as arguments or read from the environment
 variable ``DIAG_BASE_URL``.
 
 File-naming convention expected on the server::
 
-    <base_url>/diag_conv_<variable>_<ftype>.<YYYYMMDDHH>.nc4
+    <base_url>/gdas.t<HH>z.cnvstat
 
-where ``<variable>`` is one of ``t``, ``q``, ``uv``, ``ps`` and
-``<ftype>`` is ``ges`` (first guess) or ``anl`` (analysis).
+where ``<HH>`` is the cycle hour (e.g. 00).
 
 Usage (CLI)::
 
-    python scripts/download_diag.py \\
-        --date 2020092000 \\
-        --variables t q uv \\
-        --ftypes ges anl \\
-        --base-url https://example.com/gsi_diags \\
+    python scripts/download_diag.py \
+        --date 2026062900 \
+        --base-url http://www.emc.ncep.noaa.gov/users/cmartin/cadre \
         --outdir ./data
 
 Usage (library)::
 
     from scripts.download_diag import download_diag_files
     paths = download_diag_files(
-        date="2020092000",
-        variables=["t", "q", "uv"],
-        ftypes=["ges", "anl"],
-        base_url="https://example.com/gsi_diags",
+        date="2026062900",
+        base_url="http://www.emc.ncep.noaa.gov/users/cmartin/cadre",
         outdir="./data",
     )
 """
@@ -39,52 +34,37 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tarfile
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import urljoin
 from urllib.request import urlopen
 from urllib.error import URLError, HTTPError
 
-_VALID_VARIABLES: tuple[str, ...] = ("t", "q", "uv", "ps")
-_VALID_FTYPES: tuple[str, ...] = ("ges", "anl")
 _CHUNK_BYTES: int = 65536  # 64 KiB read chunk
 
 
-def build_filename(variable: str, ftype: str, date: str) -> str:
+def build_filename(date: str) -> str:
     """Return the canonical GSI diagnostic file name.
 
     Parameters
     ----------
-    variable:
-        Observed quantity: ``'t'``, ``'q'``, ``'uv'``, or ``'ps'``.
-    ftype:
-        File type: ``'ges'`` (first-guess/background) or ``'anl'``
-        (analysis).
     date:
         Cycle date-time string in ``YYYYMMDDHH`` format,
-        e.g. ``'2020092000'``.
+        e.g. ``'2026062900'``.
 
     Returns
     -------
     str
-        File name, e.g. ``'diag_conv_t_ges.2020092000.nc4'``.
+        File name, e.g. ``'gdas.t00z.cnvstat'``.
 
     Examples
     --------
-    >>> build_filename('t', 'ges', '2020092000')
-    'diag_conv_t_ges.2020092000.nc4'
+    >>> build_filename('2026062900')
+    'gdas.t00z.cnvstat'
     """
-    if variable not in _VALID_VARIABLES:
-        raise ValueError(
-            f"variable '{variable}' is not valid. "
-            f"Choose from: {', '.join(_VALID_VARIABLES)}"
-        )
-    if ftype not in _VALID_FTYPES:
-        raise ValueError(
-            f"ftype '{ftype}' is not valid. "
-            f"Choose from: {', '.join(_VALID_FTYPES)}"
-        )
-    return f"diag_conv_{variable}_{ftype}.{date}.nc4"
+    hh = date[-2:]
+    return f"gdas.t{hh}z.cnvstat"
 
 
 def download_file(url: str, dest: Path) -> Path:
@@ -131,25 +111,16 @@ def download_file(url: str, dest: Path) -> Path:
 
 def download_diag_files(
     date: str,
-    variables: Sequence[str] = ("t", "q", "uv"),
-    ftypes: Sequence[str] = ("ges", "anl"),
     base_url: str | None = None,
     outdir: str | Path = ".",
     skip_existing: bool = True,
-) -> dict[str, Path]:
+) -> list[Path]:
     """Download a set of GSI conventional diagnostic files.
 
     Parameters
     ----------
     date:
-        Cycle date-time in ``YYYYMMDDHH`` format, e.g. ``'2020092000'``.
-    variables:
-        Sequence of variable codes to download.  Valid values are
-        ``'t'``, ``'q'``, ``'uv'``, and ``'ps'``.
-        Defaults to ``('t', 'q', 'uv')``.
-    ftypes:
-        Sequence of file types to download: ``'ges'`` and/or ``'anl'``.
-        Defaults to ``('ges', 'anl')``.
+        Cycle date-time in ``YYYYMMDDHH`` format, e.g. ``'2026062900'``.
     base_url:
         Base URL of the remote file server.  If *None*, the value of
         the ``DIAG_BASE_URL`` environment variable is used.  A
@@ -163,9 +134,8 @@ def download_diag_files(
 
     Returns
     -------
-    dict[str, pathlib.Path]
-        Mapping of ``'<variable>_<ftype>'`` keys to local file paths
-        for every successfully downloaded file.
+    list[pathlib.Path]
+        List of paths to the extracted files.
 
     Raises
     ------
@@ -176,10 +146,8 @@ def download_diag_files(
     Examples
     --------
     >>> paths = download_diag_files(
-    ...     date="2020092000",
-    ...     variables=["t", "q", "uv"],
-    ...     ftypes=["ges", "anl"],
-    ...     base_url="https://example.com/gsi_diags",
+    ...     date="2026062900",
+    ...     base_url="http://www.emc.ncep.noaa.gov/users/cmartin/cadre",
     ...     outdir="./data",
     ... )
     """
@@ -198,61 +166,50 @@ def download_diag_files(
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    downloaded: dict[str, Path] = {}
+    filename = build_filename(date)
+    dest = outdir / filename
 
-    for variable in variables:
-        for ftype in ftypes:
-            filename = build_filename(variable, ftype, date)
-            dest = outdir / filename
-            key = f"{variable}_{ftype}"
+    if skip_existing and dest.exists() and dest.stat().st_size > 0:
+        print(f"[skip]     {filename}  (already present)")
+    else:
+        url = urljoin(base_url, filename)
+        print(f"[download] {url} -> {dest}")
+        try:
+            download_file(url, dest)
+            print(f"[ok]       {filename}")
+        except (HTTPError, URLError, OSError) as exc:
+            print(f"[error]    {filename}: {exc}", file=sys.stderr)
+            return []
 
-            if skip_existing and dest.exists() and dest.stat().st_size > 0:
-                print(f"[skip]     {filename}  (already present)")
-                downloaded[key] = dest
-                continue
+    # Extract the tar file
+    print(f"[extract]  {dest} -> {outdir}")
+    extracted_paths = []
+    try:
+        with tarfile.open(dest, "r") as tar:
+            tar.extractall(path=outdir)
+            for member in tar.getmembers():
+                extracted_paths.append(outdir / member.name)
+        print(f"[ok]       Extracted {len(extracted_paths)} files")
+    except (tarfile.TarError, OSError) as exc:
+        print(f"[error]    Extracting {filename}: {exc}", file=sys.stderr)
 
-            url = urljoin(base_url, filename)
-            print(f"[download] {url} -> {dest}")
-            try:
-                download_file(url, dest)
-                downloaded[key] = dest
-                print(f"[ok]       {filename}")
-            except (HTTPError, URLError, OSError) as exc:
-                print(f"[error]    {filename}: {exc}", file=sys.stderr)
-
-    return downloaded
+    return extracted_paths
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download GSI conventional diagnostic netCDF4 files.",
+        description="Download and extract GSI conventional diagnostic tar files.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--date",
         required=True,
         metavar="YYYYMMDDHH",
-        help="Cycle date-time string (e.g. 2020092000).",
-    )
-    parser.add_argument(
-        "--variables",
-        nargs="+",
-        default=["t", "q", "uv"],
-        choices=list(_VALID_VARIABLES),
-        metavar="VAR",
-        help="Variable codes to download.",
-    )
-    parser.add_argument(
-        "--ftypes",
-        nargs="+",
-        default=["ges", "anl"],
-        choices=list(_VALID_FTYPES),
-        metavar="FTYPE",
-        help="File types: 'ges' (first guess) and/or 'anl' (analysis).",
+        help="Cycle date-time string (e.g. 2026062900).",
     )
     parser.add_argument(
         "--base-url",
-        default=None,
+        default="http://www.emc.ncep.noaa.gov/users/cmartin/cadre",
         metavar="URL",
         help=(
             "Base URL of the remote server.  Falls back to the "
@@ -294,8 +251,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         paths = download_diag_files(
             date=args.date,
-            variables=args.variables,
-            ftypes=args.ftypes,
             base_url=args.base_url,
             outdir=args.outdir,
             skip_existing=args.skip_existing,
@@ -304,15 +259,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"FATAL ERROR: {exc}", file=sys.stderr)
         return 1
 
-    expected = len(args.variables) * len(args.ftypes)
-    if len(paths) < expected:
+    if not paths:
         print(
-            f"WARNING: {expected - len(paths)} file(s) could not be downloaded.",
+            "WARNING: The file could not be downloaded or extracted.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"\nAll {len(paths)} file(s) ready in '{args.outdir}'.")
+    print(f"\nExtracted {len(paths)} file(s) into '{args.outdir}'.")
     return 0
 
 
