@@ -51,3 +51,6 @@ pip install -r requirements.txt
 
 echo "Virtual environment created successfully in ${VENV_DIR}."
 echo "To activate it, run: source ${VENV_DIR}/bin/activate"
+echo "To create kernel:"
+echo "pip install ipykernel"
+echo "python -m ipykernel install --user --name=cadre --display-name="Python (cadre)"
